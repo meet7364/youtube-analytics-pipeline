@@ -134,5 +134,23 @@ class YouTubeAPI:
             "id": ids_string
         }
         
-        data = self._make_request("videos", params)
         return data.get("items", [])
+
+    def get_video_comments(self, video_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Fetch top comments for a video.
+        """
+        params = {
+            "part": "snippet",
+            "videoId": video_id,
+            "maxResults": min(limit, 100),
+            "textFormat": "plainText",
+            "order": "relevance"
+        }
+        
+        try:
+            data = self._make_request("commentThreads", params)
+            return data.get("items", [])
+        except Exception as e:
+            logger.warning(f"Could not fetch comments for video {video_id}: {e}")
+            return []

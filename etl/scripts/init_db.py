@@ -34,6 +34,11 @@ def init_db():
         with engine.connect() as conn:
             # 1. Drop existing tables in reverse dependency order
             logger.info("Dropping existing tables...")
+            conn.execute(text("DROP TABLE IF EXISTS youtube_comments CASCADE;"))
+            conn.execute(text("DROP TABLE IF EXISTS youtube_metrics CASCADE;"))
+            conn.execute(text("DROP TABLE IF EXISTS youtube_videos CASCADE;"))
+            conn.execute(text("DROP TABLE IF EXISTS youtube_channels CASCADE;"))
+            # Cleanup old tables if they exist
             conn.execute(text("DROP TABLE IF EXISTS video_daily_metrics CASCADE;"))
             conn.execute(text("DROP TABLE IF EXISTS channel_daily_metrics CASCADE;"))
             conn.execute(text("DROP TABLE IF EXISTS videos CASCADE;"))

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.extract.youtube_api import YouTubeAPI
-from src.transform.clean_data import process_channels, process_videos
+from src.transform.clean_data import process_channels, process_videos, process_comments
 from src.load.load_sql import DataLoader
 
 # Configure logging
@@ -29,11 +29,9 @@ def main():
         logger.info("Starting YouTube Analytics Pipeline")
 
         # Configuration
-        channel_ids_env = os.getenv("YOUTUBE_CHANNEL_IDS", "")
+        channel_ids_env = os.getenv("CHANNEL_IDS") or os.getenv("YOUTUBE_CHANNEL_IDS", "")
         if not channel_ids_env:
-            logger.error("YOUTUBE_CHANNEL_IDS environment variable is not set locally.")
-            # For testing purposes, if no env var, we might fallback or exit. 
-            # Letting it exit to force proper config.
+            logger.error("CHANNEL_IDS (or YOUTUBE_CHANNEL_IDS) environment variable is not set.")
             return
 
         channel_ids = [cid.strip() for cid in channel_ids_env.split(",") if cid.strip()]
@@ -55,27 +53,43 @@ def main():
 
         # --- LOAD: CHANNELS ---
         logger.info("Loading channel data...")
-        loader.load_data(channels_df, "channels", ["channel_id"])
-        loader.load_data(channel_metrics_df, "channel_daily_metrics", ["channel_id", "date"])
+        loader.load_data(channels_df, "youtube_channels", ["channel_id"])
+        loader.load_data(channel_metrics_df, "youtube_metrics", ["entity_id", "date"])
 
-        # --- EXTRACT & TRANSFORM & LOAD: VIDEOS ---
+        # --- EXTRACT & TRANSFORM & LOAD: VIDEOS & COMMENTS ---
         for channel_id in channel_ids:
             logger.info(f"Processing videos for channel: {channel_id}")
             
-            # Extract
-            raw_videos = api.get_videos(channel_id, limit=50) # Limit 50 for dev/test, can be higher
+            # Extract Videos
+            raw_videos = api.get_videos(channel_id, limit=50)
             
             if not raw_videos:
                 logger.info(f"No videos found for channel {channel_id}")
                 continue
                 
-            # Transform
+            # Transform Videos
             videos_df, video_metrics_df = process_videos(raw_videos)
             
-            # Load
+            # Load Videos
             logger.info(f"Loading {len(videos_df)} videos for channel {channel_id}...")
-            loader.load_data(videos_df, "videos", ["video_id"])
-            loader.load_data(video_metrics_df, "video_daily_metrics", ["video_id", "date"])
+            loader.load_data(videos_df, "youtube_videos", ["video_id"])
+            loader.load_data(video_metrics_df, "youtube_metrics", ["entity_id", "date"])
+            
+            # Extract & Process Comments
+            logger.info("Processing comments...")
+            all_comments_df = pd.DataFrame()
+            
+            for index, row in videos_df.iterrows():
+                video_id = row['video_id']
+                raw_comments = api.get_video_comments(video_id, limit=20)
+                if raw_comments:
+                    comments_df = process_comments(raw_comments, video_id)
+                    all_comments_df = pd.concat([all_comments_df, comments_df], ignore_index=True)
+            
+            # Load Comments
+            if not all_comments_df.empty:
+               logger.info(f"Loading {len(all_comments_df)} comments for channel {channel_id}...")
+               loader.load_data(all_comments_df, "youtube_comments", ["comment_id"])
 
         logger.info("Pipeline finished successfully.")
 

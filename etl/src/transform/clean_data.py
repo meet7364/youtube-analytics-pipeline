@@ -4,13 +4,7 @@ from datetime import datetime
 
 def process_channels(raw_items: List[Dict[str, Any]]) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Process raw channel data into channels and metrics dataframes.
-    
-    Args:
-        raw_items: List of raw channel resource objects from API.
-        
-    Returns:
-        Tuple containing (channels_df, metrics_df)
+    Process raw channel data into channels and unified metrics dataframes.
     """
     channels_data = []
     metrics_data = []
@@ -32,26 +26,23 @@ def process_channels(raw_items: List[Dict[str, Any]]) -> Tuple[pd.DataFrame, pd.
             "country": snippet.get("country")
         })
         
-        # Channel Metrics
+        # Unified Metrics (Channel)
         metrics_data.append({
-            "channel_id": item.get("id"),
+            "entity_id": item.get("id"),
+            "entity_type": "channel",
             "date": current_date,
             "view_count": int(statistics.get("viewCount", 0)),
             "subscriber_count": int(statistics.get("subscriberCount", 0)),
-            "video_count": int(statistics.get("videoCount", 0))
+            "video_count": int(statistics.get("videoCount", 0)),
+            "like_count": 0,
+            "comment_count": 0
         })
         
     return pd.DataFrame(channels_data), pd.DataFrame(metrics_data)
 
 def process_videos(raw_items: List[Dict[str, Any]]) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Process raw video data into videos and metrics dataframes.
-    
-    Args:
-        raw_items: List of raw video resource objects from API.
-        
-    Returns:
-        Tuple containing (videos_df, metrics_df)
+    Process raw video data into videos and unified metrics dataframes.
     """
     videos_data = []
     metrics_data = []
@@ -78,13 +69,36 @@ def process_videos(raw_items: List[Dict[str, Any]]) -> Tuple[pd.DataFrame, pd.Da
             "caption": content_details.get("caption")
         })
         
-        # Video Metrics
+        # Unified Metrics (Video)
         metrics_data.append({
-            "video_id": item.get("id"),
+            "entity_id": item.get("id"),
+            "entity_type": "video",
             "date": current_date,
             "view_count": int(statistics.get("viewCount", 0)),
             "like_count": int(statistics.get("likeCount", 0)),
-            "comment_count": int(statistics.get("commentCount", 0))
+            "comment_count": int(statistics.get("commentCount", 0)),
+            "subscriber_count": 0,
+            "video_count": 0
         })
         
     return pd.DataFrame(videos_data), pd.DataFrame(metrics_data)
+
+def process_comments(raw_items: List[Dict[str, Any]], video_id: str) -> pd.DataFrame:
+    """
+    Process raw comment threads into a dataframe.
+    """
+    comments_data = []
+    
+    for item in raw_items:
+        top_comment = item.get("snippet", {}).get("topLevelComment", {}).get("snippet", {})
+        
+        comments_data.append({
+            "comment_id": item.get("id"),
+            "video_id": video_id,
+            "author_name": top_comment.get("authorDisplayName"),
+            "text": top_comment.get("textDisplay"),
+            "like_count": int(top_comment.get("likeCount", 0)),
+            "published_at": top_comment.get("publishedAt")
+        })
+        
+    return pd.DataFrame(comments_data)
