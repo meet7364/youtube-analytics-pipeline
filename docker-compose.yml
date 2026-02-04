@@ -1,4 +1,11 @@
 version: '3.8'
 
 services:
-  # Pipeline service will be defined here
+  pipeline:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    volumes:
+      - .:/app
+    env_file:
+      - .env
