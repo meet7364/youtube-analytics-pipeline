@@ -1,0 +1,7 @@
+[project]
+name = "youtube-analytics-pipeline"
+version = "0.1.0"
+description = "YouTube Analytics Pipeline"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []

@@ -1,0 +1,4 @@
+version: '3.8'
+
+services:
+  # Pipeline service will be defined here
