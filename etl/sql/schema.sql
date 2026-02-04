@@ -61,3 +61,50 @@ CREATE INDEX IF NOT EXISTS idx_videos_channel_id ON youtube_videos(channel_id);
 CREATE INDEX IF NOT EXISTS idx_metrics_date ON youtube_metrics(date);
 CREATE INDEX IF NOT EXISTS idx_metrics_entity ON youtube_metrics(entity_id);
 CREATE INDEX IF NOT EXISTS idx_comments_video_id ON youtube_comments(video_id);
+
+-- 5. Analytics Views
+CREATE SCHEMA IF NOT EXISTS analytics;
+
+-- View 1: Channel Summary (Latest snapshot + specific metrics)
+CREATE OR REPLACE VIEW analytics.channel_summary AS
+SELECT 
+    c.channel_id,
+    c.title,
+    c.country,
+    m.view_count,
+    m.subscriber_count,
+    m.video_count,
+    m.date as last_updated
+FROM youtube_channels c
+JOIN youtube_metrics m ON c.channel_id = m.entity_id 
+WHERE m.entity_type = 'channel' 
+AND m.date = (SELECT MAX(date) FROM youtube_metrics WHERE entity_id = c.channel_id);
+
+-- View 2: Video Performance (Top videos by views)
+CREATE OR REPLACE VIEW analytics.video_performance AS
+SELECT 
+    v.video_id,
+    v.title,
+    c.title as channel_name,
+    v.published_at,
+    m.view_count,
+    m.like_count,
+    m.comment_count,
+    m.date as metric_date
+FROM youtube_videos v
+JOIN youtube_channels c ON v.channel_id = c.channel_id
+JOIN youtube_metrics m ON v.video_id = m.entity_id
+WHERE m.entity_type = 'video'
+AND m.date = (SELECT MAX(date) FROM youtube_metrics WHERE entity_id = v.video_id);
+
+-- View 3: Daily Growth (Aggregation over time)
+CREATE OR REPLACE VIEW analytics.daily_growth AS
+SELECT
+    date,
+    SUM(view_count) as total_views,
+    SUM(subscriber_count) as total_subscribers,
+    SUM(video_count) as total_videos
+FROM youtube_metrics
+WHERE entity_type = 'channel'
+GROUP BY date
+ORDER BY date DESC;
