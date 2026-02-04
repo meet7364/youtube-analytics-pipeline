@@ -20,4 +20,5 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH=/app/src
 
 # Keep container running for now
-CMD ["tail", "-f", "/dev/null"]
+# Run the ETL pipeline
+CMD ["uv", "run", "python", "src/main.py"]
