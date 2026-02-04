@@ -1,6 +1,6 @@
 # YouTube Analytics Pipeline
 
-A robust, modular, and containerized data pipeline that extracts YouTube channel and video data, transforms it for analytical readiness, and loads it into a Cloud PostgreSQL database (Supabase). Designed to power Power BI dashboards for multi-channel performance tracking.
+A robust, modular, and containerized data pipeline that extracts YouTube channel and video data, transforms it for analytical readiness, and loads it into a Cloud PostgreSQL database (Supabase).
 
 ## 🏗 Architecture
 
@@ -9,7 +9,7 @@ graph LR
     A[YouTube Data API] -->|Extract| B(Python Pipeline container)
     B -->|Transform| B
     B -->|Load| C[(Cloud PostgreSQL / Supabase)]
-    C -->|Connect| D[Power BI Service]
+    C -->|Connect| D[Metabase / Analytics]
 ```
 
 ### Tech Stack
@@ -74,21 +74,6 @@ chmod +x scripts/run_pipeline.sh
 3. Fetches latest data from YouTube API.
 4. Updates channel and video metadata in `channels` and `videos` tables.
 5. Appends new daily snapshots to `channel_daily_metrics` and `video_daily_metrics`.
-
-## 📊 Power BI Integration
-
-1. **Get Data**: In Power BI (Desktop or Service), select **PostgreSQL database**.
-2. **Connection**:
-   - **Server**: Your `DB_HOST` from .env.
-   - **Database**: `postgres` (or your `DB_NAME`).
-   - **Authentication**: Database (User/Password).
-3. **Select Tables**: Import `channels`, `videos`, `channel_daily_metrics`, and `video_daily_metrics`.
-4. **Modeling**:
-   - Link `channels.channel_id` -> `channel_daily_metrics.channel_id` (1 to Many).
-   - Link `videos.video_id` -> `video_daily_metrics.video_id` (1 to Many).
-   - Link `channels.channel_id` -> `videos.channel_id` (1 to Many).
-5. **Publish**: Publish the report to Power BI Service.
-6. **Scheduled Refresh**: Configure credentials in the dataset settings on Power BI Service to enable daily auto-refresh.
 
 ## 📁 Project Structure
 
