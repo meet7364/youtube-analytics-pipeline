@@ -1,99 +1,122 @@
-# YouTube Analytics Pipeline
+# YouTube Analytics Pipeline (ETL + Metabase)
 
-A robust, modular, and containerized data pipeline that extracts YouTube channel and video data, transforms it for analytical readiness, and loads it into a Cloud PostgreSQL database (Supabase).
+A production-grade, containerized data pipeline that extracts YouTube channel, video, and comment data, loads it into Supabase (PostgreSQL), and visualizes it using a local Metabase instance.
+
+Optimized for **macOS Apple Silicon (M1/M2/M3)**.
 
 ## 🏗 Architecture
 
 ```mermaid
 graph LR
-    A[YouTube Data API] -->|Extract| B(Python Pipeline container)
+    A[YouTube Data API] -->|Extract| B(Python ETL Container)
     B -->|Transform| B
-    B -->|Load| C[(Cloud PostgreSQL / Supabase)]
-    C -->|Connect| D[Metabase / Analytics]
+    B -->|Load| C[(Supabase PostgreSQL)]
+    C -->|Connect| D[Metabase (Docker)]
+    D -->|Visualize| E[Dashboards]
 ```
 
-### Tech Stack
-- **Language**: Python 3.11
-- **Dependency Manager**: `uv`
-- **Containerization**: Docker & Docker Compose
-- **Database**: PostgreSQL (Supabase)
-- **Orchestration**: Custom Python Controller (`src/main.py`)
-- **Version Control**: Git
+### Components
+1.  **Python ETL**:
+    -   Run via Docker using `python:3.11-slim` and `uv`.
+    -   Idempotent execution: Upserts data to avoid duplicates.
+    -   Collects: Channel stats, Video stats, Comments, Unified Metrics.
+2.  **Database (Supabase)**:
+    -   Cloud PostgreSQL.
+    -   Stores raw tables (`youtube_channels`, `youtube_videos`) and unified metrics (`youtube_metrics`).
+    -   Provides SQL Views (`analytics.*`) for reporting.
+3.  **Visualization (Metabase)**:
+    -   Local Docker container running on port `3000`.
+    -   Connects directly to Supabase.
 
 ## 🚀 Setup & Installation
 
 ### Prerequisites
-- Docker Desktop installed and running.
-- A YouTube Data API Key (from Google Cloud Console).
-- A Cloud PostgreSQL Database (e.g., Supabase, Neon).
-- `git`
+-   Docker Desktop (ensure it's running).
+-   Supabase Project (Connection string).
+-   YouTube Data API Key.
+-   `git` installed.
 
-### 1. Clone the Repository
+### 1. Clone & Configure
 ```bash
-git clone <repository_url>
+git clone <repo_url>
 cd youtube-analytics-pipeline
-```
 
-### 2. Configure Environment
-Create a `.env` file in the root directory based on `.env.example`:
-```bash
+# Create config from template
 cp .env.example .env
 ```
-Fill in your credentials:
-```env
-YOUTUBE_API_KEY=your_api_key
-YOUTUBE_CHANNEL_IDS=channel_id_1,channel_id_2
-DB_HOST=your.supabase.db.url
+
+**Edit `.env`** with your credentials:
+```ini
+YOUTUBE_API_KEY=your_google_api_key
+CHANNEL_IDS=comma,separated,channel_ids
+DB_HOST=aws-0-us-west-1.pooler.supabase.com
 DB_PORT=5432
 DB_NAME=postgres
-DB_USER=postgres
+DB_USER=postgres.username
 DB_PASSWORD=your_password
 ```
 
+### 2. Run the Stack
+Use the unified Docker Compose to start Metabase and build the ETL image:
+```bash
+docker-compose up -d
+```
+*Note: This starts Metabase and prepares the ETL service.*
+
 ### 3. Initialize Database
-The pipeline requires specific tables (`channels`, `videos`, `daily_metrics`). Warning: This script drops existing tables.
+Prepare the Supabase database (create tables and views). Run this command (using the ETL container):
 ```bash
-# You can run this locally if you have uv installed, or via docker (custom command required)
-uv run python scripts/init_db.py
+# Initialize schema (Warning: Drops existing compatible tables to ensure fresh schema)
+docker-compose run --rm etl uv run python etl/scripts/init_db.py
 ```
-*Alternatively, you can manually execute `sql/schema.sql` in your database's SQL editor.*
 
-## 🏃 Usage
-
-### Run the Pipeline
-The entire pipeline (Extract -> Transform -> Load) runs inside a Docker container.
-
+### 4. Run ETL Pipeline
+Execute the extraction and loading process manually:
 ```bash
-chmod +x scripts/run_pipeline.sh
-./scripts/run_pipeline.sh
+docker-compose run --rm etl
+# OR explicitly:
+# docker-compose run --rm etl uv run python etl/src/main.py
 ```
 
-**What happens?**
-1. Docker container builds/starts.
-2. Pipeline reads channel IDs from `.env`.
-3. Fetches latest data from YouTube API.
-4. Updates channel and video metadata in `channels` and `videos` tables.
-5. Appends new daily snapshots to `channel_daily_metrics` and `video_daily_metrics`.
+### 5. Access Metabase
+1.  Open [http://localhost:3000](http://localhost:3000).
+2.  Complete the initial Metabase setup (create admin account).
+3.  **Connect Database**:
+    -   Select **PostgreSQL**.
+    -   **Host**: Your Supabase Host (`DB_HOST`).
+    -   **Database Name**: `postgres` (or as configured).
+    -   **Username/Password**: From your `.env`.
+    -   **Use a secure connection (SSL)**: Required for Supabase.
+4.  **Explore Data**:
+    -   Go to "Browse Data".
+    -   You will see tables: `youtube_channels`, `youtube_videos`, etc.
+    -   You will see views in `analytics` schema (e.g., `channel_summary`).
 
-## 📁 Project Structure
+## 📊 Analytics Dashboards
+Recommended dashboards to create in Metabase:
 
+1.  **Channel Overview**:
+    -   Use `analytics.channel_summary`.
+    -   Metrics: Total Views, Subscriber Count.
+2.  **Top Videos**:
+    -   Use `analytics.video_performance`.
+    -   Table: Sort by `view_count` descending.
+3.  **Engagement**:
+    -   Plot `like_count` vs `view_count` scatter.
+    -   Comments analysis using `youtube_comments` table.
+
+## 🛠 Development
+The project uses `uv` for minimal and fast dependency management.
+
+**Folder Structure**:
 ```
-youtube-analytics-pipeline/
-├── docker/                 # Docker configuration
-│   └── Dockerfile          # Python environment definition
-├── scripts/                # Utility scripts
-│   ├── run_pipeline.sh     # Main execution script
-│   ├── init_db.py          # Database reset/init script
-│   └── test_connection.py  # (Removed) Connection tester
-├── sql/                    # SQL artifacts
-│   └── schema.sql          # Database schema definition
-├── src/                    # Source code
-│   ├── extract/            # YouTube API logic
-│   ├── transform/          # Data cleaning & dataframe creation
-│   ├── load/               # Database loading (SQLAlchemy)
-│   └── main.py             # Pipeline entry point
-├── .env.example            # Environment template
-├── docker-compose.yml      # Service definition
-├── pyproject.toml          # Python dependencies (uv)
-└── max_run_log.txt         # Execution logs (if saved)
+project-root/
+├── etl/                # Python ETL Application
+│   ├── src/            # Source code (extract, transform, load)
+│   ├── sql/            # Schema and Views
+│   ├── scripts/        # Init DB and utility scripts
+│   └── Dockerfile      # Container definition
+├── metabase/           # Metabase configuration
+├── docker-compose.yml  # Root orchestration
+└── .env.example        # Config template
 ```
