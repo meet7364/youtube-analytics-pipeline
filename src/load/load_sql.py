@@ -58,7 +58,7 @@ class DataLoader:
         records = df.to_dict(orient='records')
         
         # Prepare the insert statement with ON CONFLICT logic
-        stmt = insert(pd.io.sql.get_schema(df, table_name, con=self.engine).split()[2].strip('"').strip("'"))
+        # Prepare the insert statement with ON CONFLICT logic
         # Note: pd.io.sql.get_schema is a bit hacky for table object, better to assume table exists or reflect it.
         # But for raw sql construction, we can just use the table name string if we trust input.
         
