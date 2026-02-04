@@ -1,11 +1,20 @@
-version: '3.8'
+version: '3.9'
 
 services:
-  pipeline:
+  etl:
     build:
-      context: .
-      dockerfile: docker/Dockerfile
-    volumes:
-      - .:/app
-    env_file:
-      - .env
+      context: ./etl
+    env_file: .env
+    networks:
+      - youtube_analytics_net
+
+  metabase:
+    extends:
+      file: metabase/docker-compose.yml
+      service: metabase
+    networks:
+      - youtube_analytics_net
+
+networks:
+  youtube_analytics_net:
+    driver: bridge
