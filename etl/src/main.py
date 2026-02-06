@@ -2,6 +2,7 @@ import os
 import logging
 import sys
 from dotenv import load_dotenv
+import pandas as pd
 
 # Add src to path to allow imports if running directly
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -49,12 +50,12 @@ def main():
             return
 
         logger.info("Transforming channel data...")
-        channels_df, channel_metrics_df = process_channels(raw_channels)
+        dim_channel_df, fact_channel_df = process_channels(raw_channels)
 
         # --- LOAD: CHANNELS ---
         logger.info("Loading channel data...")
-        loader.load_data(channels_df, "youtube_channels", ["channel_id"])
-        loader.load_data(channel_metrics_df, "youtube_metrics", ["entity_id", "date"])
+        loader.load_data(dim_channel_df, "dim_channel", ["channel_id"])
+        loader.load_data(fact_channel_df, "fact_channel_daily", ["channel_id", "date_id"])
 
         # --- EXTRACT & TRANSFORM & LOAD: VIDEOS & COMMENTS ---
         for channel_id in channel_ids:
@@ -68,18 +69,18 @@ def main():
                 continue
                 
             # Transform Videos
-            videos_df, video_metrics_df = process_videos(raw_videos)
+            dim_video_df, fact_video_df = process_videos(raw_videos)
             
             # Load Videos
-            logger.info(f"Loading {len(videos_df)} videos for channel {channel_id}...")
-            loader.load_data(videos_df, "youtube_videos", ["video_id"])
-            loader.load_data(video_metrics_df, "youtube_metrics", ["entity_id", "date"])
+            logger.info(f"Loading {len(dim_video_df)} videos for channel {channel_id}...")
+            loader.load_data(dim_video_df, "dim_video", ["video_id"])
+            loader.load_data(fact_video_df, "fact_video_daily", ["video_id", "date_id"])
             
             # Extract & Process Comments
             logger.info("Processing comments...")
             all_comments_df = pd.DataFrame()
             
-            for index, row in videos_df.iterrows():
+            for index, row in dim_video_df.iterrows():
                 video_id = row['video_id']
                 raw_comments = api.get_video_comments(video_id, limit=20)
                 if raw_comments:

@@ -1,13 +1,34 @@
 import pandas as pd
+import re
 from typing import List, Dict, Any, Tuple
 from datetime import datetime
 
+def parse_duration(duration: str) -> int:
+    """
+    Parse ISO 8601 duration string (e.g., PT1H2M10S) to seconds.
+    """
+    if not duration:
+        return 0
+    
+    # Regex to extract hours, minutes, seconds
+    pattern = re.compile(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?')
+    match = pattern.match(duration)
+    
+    if not match:
+        return 0
+    
+    hours = int(match.group(1) or 0)
+    minutes = int(match.group(2) or 0)
+    seconds = int(match.group(3) or 0)
+    
+    return hours * 3600 + minutes * 60 + seconds
+
 def process_channels(raw_items: List[Dict[str, Any]]) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Process raw channel data into channels and unified metrics dataframes.
+    Process raw channel data into dim_channel and fact_channel_daily dataframes.
     """
-    channels_data = []
-    metrics_data = []
+    dim_channel_data = []
+    fact_channel_data = []
     
     current_date = datetime.now().date()
     
@@ -15,10 +36,10 @@ def process_channels(raw_items: List[Dict[str, Any]]) -> Tuple[pd.DataFrame, pd.
         snippet = item.get("snippet", {})
         statistics = item.get("statistics", {})
         
-        # Channel Metadata
-        channels_data.append({
+        # dim_channel
+        dim_channel_data.append({
             "channel_id": item.get("id"),
-            "title": snippet.get("title"),
+            "channel_name": snippet.get("title"),
             "description": snippet.get("description"),
             "custom_url": snippet.get("customUrl"),
             "published_at": snippet.get("publishedAt"),
@@ -26,26 +47,23 @@ def process_channels(raw_items: List[Dict[str, Any]]) -> Tuple[pd.DataFrame, pd.
             "country": snippet.get("country")
         })
         
-        # Unified Metrics (Channel)
-        metrics_data.append({
-            "entity_id": item.get("id"),
-            "entity_type": "channel",
-            "date": current_date,
-            "view_count": int(statistics.get("viewCount", 0)),
-            "subscriber_count": int(statistics.get("subscriberCount", 0)),
-            "video_count": int(statistics.get("videoCount", 0)),
-            "like_count": 0,
-            "comment_count": 0
+        # fact_channel_daily
+        fact_channel_data.append({
+            "channel_id": item.get("id"),
+            "date_id": current_date,
+            "subscribers": int(statistics.get("subscriberCount", 0)),
+            "total_views": int(statistics.get("viewCount", 0)),
+            "total_videos": int(statistics.get("videoCount", 0))
         })
         
-    return pd.DataFrame(channels_data), pd.DataFrame(metrics_data)
+    return pd.DataFrame(dim_channel_data), pd.DataFrame(fact_channel_data)
 
 def process_videos(raw_items: List[Dict[str, Any]]) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Process raw video data into videos and unified metrics dataframes.
+    Process raw video data into dim_video and fact_video_daily dataframes.
     """
-    videos_data = []
-    metrics_data = []
+    dim_video_data = []
+    fact_video_data = []
     
     current_date = datetime.now().date()
     
@@ -54,34 +72,29 @@ def process_videos(raw_items: List[Dict[str, Any]]) -> Tuple[pd.DataFrame, pd.Da
         statistics = item.get("statistics", {})
         content_details = item.get("contentDetails", {})
         
-        # Video Metadata
-        videos_data.append({
+        # dim_video
+        dim_video_data.append({
             "video_id": item.get("id"),
             "channel_id": snippet.get("channelId"),
             "title": snippet.get("title"),
             "description": snippet.get("description"),
             "published_at": snippet.get("publishedAt"),
-            "thumbnail_url": snippet.get("thumbnails", {}).get("high", {}).get("url"),
+            "duration_seconds": parse_duration(content_details.get("duration")),
+            "category": snippet.get("categoryId"), # Using ID as category for now
             "tags": snippet.get("tags", []),
-            "category_id": snippet.get("categoryId"),
-            "duration": content_details.get("duration"),
-            "definition": content_details.get("definition"),
-            "caption": content_details.get("caption")
+            "thumbnail_url": snippet.get("thumbnails", {}).get("high", {}).get("url")
         })
         
-        # Unified Metrics (Video)
-        metrics_data.append({
-            "entity_id": item.get("id"),
-            "entity_type": "video",
-            "date": current_date,
-            "view_count": int(statistics.get("viewCount", 0)),
-            "like_count": int(statistics.get("likeCount", 0)),
-            "comment_count": int(statistics.get("commentCount", 0)),
-            "subscriber_count": 0,
-            "video_count": 0
+        # fact_video_daily
+        fact_video_data.append({
+            "video_id": item.get("id"),
+            "date_id": current_date,
+            "views": int(statistics.get("viewCount", 0)),
+            "likes": int(statistics.get("likeCount", 0)),
+            "comments": int(statistics.get("commentCount", 0))
         })
         
-    return pd.DataFrame(videos_data), pd.DataFrame(metrics_data)
+    return pd.DataFrame(dim_video_data), pd.DataFrame(fact_video_data)
 
 def process_comments(raw_items: List[Dict[str, Any]], video_id: str) -> pd.DataFrame:
     """

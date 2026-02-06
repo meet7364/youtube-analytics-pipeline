@@ -134,6 +134,7 @@ class YouTubeAPI:
             "id": ids_string
         }
         
+        data = self._make_request("videos", params)
         return data.get("items", [])
 
     def get_video_comments(self, video_id: str, limit: int = 20) -> List[Dict[str, Any]]:

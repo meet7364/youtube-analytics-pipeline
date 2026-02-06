@@ -1,110 +1,160 @@
--- Database Schema for YouTube Analytics Pipeline (Refactored)
+-- Database Schema for YouTube Analytics Pipeline (Star Schema)
 
--- 1. Channels Table
-CREATE TABLE IF NOT EXISTS youtube_channels (
-    channel_id VARCHAR(50) PRIMARY KEY,
-    title VARCHAR(255) NOT NULL,
+-- --------------------------------------------------
+-- STEP 1 — CREATE DIMENSION TABLES
+-- --------------------------------------------------
+
+-- 1. Dimension: Channel
+CREATE TABLE IF NOT EXISTS dim_channel (
+    channel_id TEXT PRIMARY KEY,
+    channel_name TEXT,
     description TEXT,
-    custom_url VARCHAR(100),
     published_at TIMESTAMP WITH TIME ZONE,
-    thumbnail_url VARCHAR(255),
-    country VARCHAR(10),
+    country TEXT,
+    custom_url TEXT,
+    thumbnail_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Videos Table
-CREATE TABLE IF NOT EXISTS youtube_videos (
-    video_id VARCHAR(50) PRIMARY KEY,
-    channel_id VARCHAR(50) NOT NULL REFERENCES youtube_channels(channel_id),
-    title VARCHAR(500) NOT NULL,
+-- 2. Dimension: Video
+CREATE TABLE IF NOT EXISTS dim_video (
+    video_id TEXT PRIMARY KEY,
+    channel_id TEXT REFERENCES dim_channel(channel_id),
+    title TEXT,
     description TEXT,
     published_at TIMESTAMP WITH TIME ZONE,
-    thumbnail_url VARCHAR(255),
+    duration_seconds INT,
+    category TEXT,
+    item_count INT DEFAULT 0, -- Store for compatibility if needed or removed
     tags TEXT[],
-    category_id VARCHAR(10),
-    duration VARCHAR(20),
-    definition VARCHAR(10),
-    caption VARCHAR(10),
+    thumbnail_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 3. Unified Metrics Table (Channels & Videos)
-CREATE TABLE IF NOT EXISTS youtube_metrics (
-    id SERIAL PRIMARY KEY,
-    entity_id VARCHAR(50) NOT NULL, -- channel_id or video_id
-    entity_type VARCHAR(20) NOT NULL, -- 'channel' or 'video'
-    date DATE NOT NULL,
-    view_count BIGINT DEFAULT 0,
-    subscriber_count BIGINT DEFAULT 0, -- Channel only
-    video_count INTEGER DEFAULT 0,     -- Channel only
-    like_count BIGINT DEFAULT 0,       -- Video only
-    comment_count BIGINT DEFAULT 0,    -- Video only
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(entity_id, date)
+-- 3. Dimension: Date (Generated)
+CREATE TABLE IF NOT EXISTS dim_date (
+    date_id DATE PRIMARY KEY,
+    day INT,
+    month INT,
+    year INT,
+    day_of_week TEXT,
+    quarter INT
 );
 
--- 4. Comments Table
+-- Populate dim_date with 10 years of data (past 5, next 5)
+INSERT INTO dim_date
+SELECT
+    datum as date_id,
+    EXTRACT(DAY FROM datum) as day,
+    EXTRACT(MONTH FROM datum) as month,
+    EXTRACT(YEAR FROM datum) as year,
+    TO_CHAR(datum, 'Day') as day_of_week,
+    EXTRACT(QUARTER FROM datum) as quarter
+FROM (SELECT '2020-01-01'::DATE + SEQUENCE.DAY AS datum
+      FROM GENERATE_SERIES(0, 3650) AS SEQUENCE(DAY)) DQ
+ON CONFLICT (date_id) DO NOTHING;
+
+
+-- --------------------------------------------------
+-- STEP 2 — CREATE FACT TABLES
+-- --------------------------------------------------
+
+-- 4. Fact: Channel Daily Metrics
+CREATE TABLE IF NOT EXISTS fact_channel_daily (
+    id SERIAL PRIMARY KEY,
+    channel_id TEXT REFERENCES dim_channel(channel_id),
+    date_id DATE REFERENCES dim_date(date_id),
+    subscribers BIGINT,
+    total_views BIGINT,
+    total_videos BIGINT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(channel_id, date_id)
+);
+
+-- 5. Fact: Video Daily Metrics
+CREATE TABLE IF NOT EXISTS fact_video_daily (
+    id SERIAL PRIMARY KEY,
+    video_id TEXT REFERENCES dim_video(video_id),
+    date_id DATE REFERENCES dim_date(date_id),
+    views BIGINT,
+    likes BIGINT,
+    comments BIGINT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(video_id, date_id)
+);
+
+-- 6. Comments Table (Optional/Separate Fact or Dimension depending on usage, kept for raw data)
 CREATE TABLE IF NOT EXISTS youtube_comments (
-    comment_id VARCHAR(100) PRIMARY KEY,
-    video_id VARCHAR(50) NOT NULL REFERENCES youtube_videos(video_id),
-    author_name VARCHAR(255),
+    comment_id TEXT PRIMARY KEY,
+    video_id TEXT REFERENCES dim_video(video_id),
+    author_name TEXT,
     text TEXT,
-    like_count INTEGER DEFAULT 0,
+    like_count BIGINT DEFAULT 0,
     published_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Indexes
-CREATE INDEX IF NOT EXISTS idx_videos_channel_id ON youtube_videos(channel_id);
-CREATE INDEX IF NOT EXISTS idx_metrics_date ON youtube_metrics(date);
-CREATE INDEX IF NOT EXISTS idx_metrics_entity ON youtube_metrics(entity_id);
-CREATE INDEX IF NOT EXISTS idx_comments_video_id ON youtube_comments(video_id);
+-- --------------------------------------------------
+-- STEP 3 — CREATE ANALYTICS VIEWS
+-- --------------------------------------------------
 
--- 5. Analytics Views
 CREATE SCHEMA IF NOT EXISTS analytics;
 
--- View 1: Channel Summary (Latest snapshot + specific metrics)
+-- 1. analytics_channel_summary
 CREATE OR REPLACE VIEW analytics.channel_summary AS
-SELECT 
-    c.channel_id,
-    c.title,
-    c.country,
-    m.view_count,
-    m.subscriber_count,
-    m.video_count,
-    m.date as last_updated
-FROM youtube_channels c
-JOIN youtube_metrics m ON c.channel_id = m.entity_id 
-WHERE m.entity_type = 'channel' 
-AND m.date = (SELECT MAX(date) FROM youtube_metrics WHERE entity_id = c.channel_id);
-
--- View 2: Video Performance (Top videos by views)
-CREATE OR REPLACE VIEW analytics.video_performance AS
-SELECT 
-    v.video_id,
-    v.title,
-    c.title as channel_name,
-    v.published_at,
-    m.view_count,
-    m.like_count,
-    m.comment_count,
-    m.date as metric_date
-FROM youtube_videos v
-JOIN youtube_channels c ON v.channel_id = c.channel_id
-JOIN youtube_metrics m ON v.video_id = m.entity_id
-WHERE m.entity_type = 'video'
-AND m.date = (SELECT MAX(date) FROM youtube_metrics WHERE entity_id = v.video_id);
-
--- View 3: Daily Growth (Aggregation over time)
-CREATE OR REPLACE VIEW analytics.daily_growth AS
 SELECT
-    date,
-    SUM(view_count) as total_views,
-    SUM(subscriber_count) as total_subscribers,
-    SUM(video_count) as total_videos
-FROM youtube_metrics
-WHERE entity_type = 'channel'
-GROUP BY date
-ORDER BY date DESC;
+    dc.channel_id,
+    dc.channel_name,
+    dc.country,
+    fcd.total_views as latest_total_views,
+    fcd.subscribers as latest_subscribers,
+    fcd.total_videos as latest_video_count,
+    fcd.date_id as last_updated
+FROM dim_channel dc
+JOIN fact_channel_daily fcd ON dc.channel_id = fcd.channel_id
+WHERE fcd.date_id = (
+    SELECT MAX(date_id) FROM fact_channel_daily WHERE channel_id = dc.channel_id
+);
+
+-- 2. analytics_video_performance
+CREATE OR REPLACE VIEW analytics.video_performance AS
+SELECT
+    dv.video_id,
+    dv.title as video_title,
+    dc.channel_name,
+    fvd.views as total_views,
+    fvd.likes as total_likes,
+    fvd.comments as total_comments,
+    dv.published_at,
+    dv.duration_seconds
+FROM dim_video dv
+JOIN dim_channel dc ON dv.channel_id = dc.channel_id
+JOIN fact_video_daily fvd ON dv.video_id = fvd.video_id
+WHERE fvd.date_id = (
+    SELECT MAX(date_id) FROM fact_video_daily WHERE video_id = dv.video_id
+);
+
+-- 3. analytics_channel_growth
+CREATE OR REPLACE VIEW analytics.channel_growth AS
+SELECT
+    fcd.channel_id,
+    dc.channel_name,
+    fcd.date_id,
+    fcd.subscribers as daily_subscribers,
+    fcd.subscribers - LAG(fcd.subscribers, 1, 0) OVER (PARTITION BY fcd.channel_id ORDER BY fcd.date_id) as subscriber_growth
+FROM fact_channel_daily fcd
+JOIN dim_channel dc ON fcd.channel_id = dc.channel_id
+ORDER BY fcd.date_id DESC;
+
+-- --------------------------------------------------
+-- STEP 5 — PERFORMANCE ADDITIONS
+-- --------------------------------------------------
+
+CREATE INDEX IF NOT EXISTS idx_dim_video_channel_id ON dim_video(channel_id);
+CREATE INDEX IF NOT EXISTS idx_fact_channel_date ON fact_channel_daily(date_id);
+CREATE INDEX IF NOT EXISTS idx_fact_channel_cid ON fact_channel_daily(channel_id);
+CREATE INDEX IF NOT EXISTS idx_fact_video_date ON fact_video_daily(date_id);
+CREATE INDEX IF NOT EXISTS idx_fact_video_vid ON fact_video_daily(video_id);
+

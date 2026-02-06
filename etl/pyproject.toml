@@ -5,9 +5,19 @@ description = "YouTube Analytics Pipeline"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "pandas>=3.0.0",
-    "psycopg2-binary>=2.9.11",
-    "python-dotenv>=1.2.1",
-    "requests>=2.32.5",
-    "sqlalchemy>=2.0.46",
+    "certifi==2026.1.4",
+    "charset-normalizer==3.4.4",
+    "greenlet==3.3.1 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'ppc64le' or platform_machine == 'win32' or platform_machine == 'x86_64'",
+    "idna==3.11",
+    "numpy==2.4.2",
+    "pandas==3.0.0",
+    "psycopg2-binary==2.9.11",
+    "python-dateutil==2.9.0.post0",
+    "python-dotenv==1.2.1",
+    "requests==2.32.5",
+    "six==1.17.0",
+    "sqlalchemy==2.0.46",
+    "typing-extensions==4.15.0",
+    "tzdata==2025.3 ; sys_platform == 'emscripten' or sys_platform == 'win32'",
+    "urllib3==2.6.3",
 ]
