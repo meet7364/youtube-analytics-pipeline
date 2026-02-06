@@ -18,15 +18,14 @@ To build a robust, self-hosted analytics solution that allows creators to track 
 *   **Interactive Dashboards**: Built on Metabase, allowing for deep dives into subscriber growth, engagement rates, and viral video detection.
 *   **Containerized**: Fully Dockerized for easy deployment and replication.
 
-### Architecture
-```mermaid
-graph LR
-    A[YouTube Data API] -->|Extract| B(Python ETL Container)
-    B -->|Transform| B
-    B -->|Load| C[(Supabase PostgreSQL)]
-    C -->|Connect| D[Metabase (Docker)]
-    D -->|Visualize| E[Dashboards]
-```
+### Architecture Block Diagram
+![System Architecture](diagram.png)
+
+**Data Flow Explanation:**
+1.  **Extract**: The ETL container fetches raw data (stats, comments) from the **YouTube Data API**.
+2.  **Transform**: Data is cleaned and structured into a **Star Schema** (Dimensions & Facts).
+3.  **Load**: Processed data is upserted into **Supabase PostgreSQL** to ensure history is preserved.
+4.  **Visualize**: **Metabase** connects to the database to power the analytics dashboards.
 
 ---
 
