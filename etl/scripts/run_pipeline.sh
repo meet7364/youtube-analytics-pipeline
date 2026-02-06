@@ -21,6 +21,6 @@ sleep 5
 
 # Run the pipeline inside the container
 echo "Running extraction pipeline..."
-docker-compose exec -T pipeline uv run python src/main.py
+docker-compose run --rm etl uv run python src/main.py
 
 echo "Pipeline execution finished."

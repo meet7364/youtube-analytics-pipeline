@@ -1,11 +1,24 @@
-# YouTube Analytics Pipeline (ETL + Metabase)
+# YouTube Analytics Pipeline (Star Schema)
 
-A production-grade, containerized data pipeline that extracts YouTube channel, video, and comment data, loads it into Supabase (PostgreSQL), and visualizes it using a local Metabase instance.
+A production-grade, containerized data pipeline that extracts YouTube channel, video, and comment data, transforms it into a **Star Schema**, and populates a Supabase PostgreSQL database for Metabase visualizations.
 
 Optimized for **macOS Apple Silicon (M1/M2/M3)**.
 
-## 🏗 Architecture
+---
 
+## 📖 General Overview
+*For viewers getting started with the project.*
+
+### Project Goal
+To build a robust, self-hosted analytics solution that allows creators to track their YouTube performance without relying solely on YouTube Studio. This project owns the data, allowing for custom historical analysis and cross-channel comparisons.
+
+### Key Features
+*   **Automated Data Extraction**: Python scripts run daily to fetch the latest video stats and comments.
+*   **Star Schema Databases**: Optimized data structure (`facts` and `dimensions`) for fast querying.
+*   **Interactive Dashboards**: Built on Metabase, allowing for deep dives into subscriber growth, engagement rates, and viral video detection.
+*   **Containerized**: Fully Dockerized for easy deployment and replication.
+
+### Architecture
 ```mermaid
 graph LR
     A[YouTube Data API] -->|Extract| B(Python ETL Container)
@@ -15,108 +28,68 @@ graph LR
     D -->|Visualize| E[Dashboards]
 ```
 
-### Components
-1.  **Python ETL**:
-    -   Run via Docker using `python:3.11-slim` and `uv`.
-    -   Idempotent execution: Upserts data to avoid duplicates.
-    -   Collects: Channel stats, Video stats, Comments, Unified Metrics.
-2.  **Database (Supabase)**:
-    -   Cloud PostgreSQL.
-    -   Stores raw tables (`youtube_channels`, `youtube_videos`) and unified metrics (`youtube_metrics`).
-    -   Provides SQL Views (`analytics.*`) for reporting.
-3.  **Visualization (Metabase)**:
-    -   Local Docker container running on port `3000`.
-    -   Connects directly to Supabase.
+---
+
+## 📊 Dashboard & Creation Process
+*How I built the analytics dashboard and the technical decisions behind it.*
+
+### 1. Data Modeling (Star Schema)
+I moved away from flat tables to a **Star Schema** to make the analytics more scalable and easier to query in Metabase.
+*   **Fact Tables** (`fact_channel_daily`, `fact_video_daily`): Store key metrics like views, likes, and comments for every single day.
+*   **Dimension Tables** (`dim_channel`, `dim_video`, `dim_date`): Store descriptive attributes like video titles, publish dates, and categories.
+
+### 2. Dashboard Design (Metabase)
+I connected Metabase directly to the Supabase PostgreSQL database. The dashboard is designed to answer specific questions:
+*   **"How is my channel growing?"** -> *Subscriber Growth Trend* (Line Chart using `analytics.channel_growth`).
+*   **"Which videos are performing best?"** -> *Top Videos Table* (Sorted by `total_views` from `analytics.video_performance`).
+*   **"When should I upload?"** -> *Best Upload Day* (Bar chart grouping average views by `day_of_week`).
+
+### 3. Key SQL Queries
+Instead of relying only on Metabase's GUI, I wrote optimized SQL queries (available in `metabase/dashboard_queries.sql`) to handle complex logic:
+*   **Viral Video Detection**: Identifies videos with >3x the average channel views.
+*   **Engagement Rate**: Calculates `(Likes + Comments) / Views` percentage dynamically.
+
+### 4. Running the Dashboard
+1.  **Start Services**: `docker-compose up -d` starts the Metabase container.
+2.  **Access UI**: Open `http://localhost:3000`.
+3.  **Connect Data**: Point Metabase to the Supabase host defined in `.env`.
+4.  **Visualize**: Use the pre-built views in the `analytics` schema to drag-and-drop charts.
+
+---
 
 ## 🚀 Setup & Installation
 
 ### Prerequisites
--   Docker Desktop (ensure it's running).
+-   Docker Desktop.
 -   Supabase Project (Connection string).
 -   YouTube Data API Key.
--   `git` installed.
 
-### 1. Clone & Configure
-```bash
-git clone <repo_url>
-cd youtube-analytics-pipeline
-
-# Create config from template
-cp .env.example .env
-```
-
-**Edit `.env`** with your credentials:
-```ini
-YOUTUBE_API_KEY=your_google_api_key
-CHANNEL_IDS=comma,separated,channel_ids
-DB_HOST=aws-0-us-west-1.pooler.supabase.com
-DB_PORT=5432
-DB_NAME=postgres
-DB_USER=postgres.username
-DB_PASSWORD=your_password
-```
-
-### 2. Run the Stack
-Use the unified Docker Compose to start Metabase and build the ETL image:
-```bash
-docker-compose up -d
-```
-*Note: This starts Metabase and prepares the ETL service.*
-
-### 3. Initialize Database
-Prepare the Supabase database (create tables and views). Run this command (using the ETL container):
-```bash
-# Initialize schema (Warning: Drops existing compatible tables to ensure fresh schema)
-docker-compose run --rm etl uv run python etl/scripts/init_db.py
-```
-
-### 4. Run ETL Pipeline
-Execute the extraction and loading process manually:
-```bash
-docker-compose run --rm etl
-# OR explicitly:
-# docker-compose run --rm etl uv run python etl/src/main.py
-```
-
-### 5. Access Metabase
-1.  Open [http://localhost:3000](http://localhost:3000).
-2.  Complete the initial Metabase setup (create admin account).
-3.  **Connect Database**:
-    -   Select **PostgreSQL**.
-    -   **Host**: Your Supabase Host (`DB_HOST`).
-    -   **Database Name**: `postgres` (or as configured).
-    -   **Username/Password**: From your `.env`.
-    -   **Use a secure connection (SSL)**: Required for Supabase.
-4.  **Explore Data**:
-    -   Go to "Browse Data".
-    -   You will see tables: `youtube_channels`, `youtube_videos`, etc.
-    -   You will see views in `analytics` schema (e.g., `channel_summary`).
-
-## 📊 Analytics Dashboards
-Recommended dashboards to create in Metabase:
-
-1.  **Channel Overview**:
-    -   Use `analytics.channel_summary`.
-    -   Metrics: Total Views, Subscriber Count.
-2.  **Top Videos**:
-    -   Use `analytics.video_performance`.
-    -   Table: Sort by `view_count` descending.
-3.  **Engagement**:
-    -   Plot `like_count` vs `view_count` scatter.
-    -   Comments analysis using `youtube_comments` table.
-
-## 🛠 Development
-The project uses `uv` for minimal and fast dependency management.
+### Quick Start
+1.  **Clone & Config**:
+    ```bash
+    git clone <repo_url>
+    cp .env.example .env
+    # Edit .env with your credentials
+    ```
+2.  **Initialize Schema**:
+    ```bash
+    docker-compose run --rm etl uv run python etl/scripts/init_db.py
+    ```
+3.  **Run Pipeline**:
+    ```bash
+    docker-compose run --rm etl
+    ```
+4.  **View Dashboard**: Go to http://localhost:3000.
 
 **Folder Structure**:
 ```
 project-root/
 ├── etl/                # Python ETL Application
 │   ├── src/            # Source code (extract, transform, load)
-│   ├── sql/            # Schema and Views
+│   ├── sql/            # Star Schema and Views
 │   ├── scripts/        # Init DB and utility scripts
 │   └── Dockerfile      # Container definition
-├── metabase/           # Metabase configuration
+├── metabase/           # Metabase configuration & queries
 ├── docker-compose.yml  # Root orchestration
 └── .env.example        # Config template
 ```
